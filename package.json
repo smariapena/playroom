@@ -76,6 +76,8 @@
     "localforage": "^1.7.2",
     "lodash": "^4.17.11",
     "mini-css-extract-plugin": "^0.4.3",
+    "monaco-editor": "^0.15.6",
+    "monaco-editor-webpack-plugin": "^1.7.0",
     "opn": "^5.4.0",
     "parse-prop-types": "^0.3.0",
     "prettier": "^1.15.3",
