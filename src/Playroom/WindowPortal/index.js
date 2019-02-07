@@ -1,6 +1,7 @@
 import React from 'react';
 import ReactDOM from 'react-dom';
 import PropTypes from 'prop-types';
+import * as monaco from 'monaco-editor';
 
 const copyStyles = (sourceDoc, targetDoc) => {
   Array.from(sourceDoc.styleSheets).forEach(styleSheet => {
@@ -29,7 +30,8 @@ export default class WindowPortal extends React.PureComponent {
     height: PropTypes.number.isRequired,
     width: PropTypes.number.isRequired,
     onClose: PropTypes.func.isRequired,
-    children: PropTypes.node.isRequired
+    children: PropTypes.node.isRequired,
+    monacoModel: PropTypes.any
   };
 
   constructor(props) {
@@ -62,6 +64,8 @@ export default class WindowPortal extends React.PureComponent {
     externalWindow.addEventListener('beforeunload', this.props.onClose);
 
     copyStyles(document, externalWindow.document);
+    const editor = monaco.editor.create(containerDiv);
+    editor.setModel(this.props.monacoModel);
     this.setState({ externalWindow, containerDiv });
   };
 

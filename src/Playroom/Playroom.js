@@ -1,11 +1,9 @@
 import React, { Component } from 'react';
-import parsePropTypes from 'parse-prop-types';
+// import parsePropTypes from 'parse-prop-types';
 import flatMap from 'lodash/flatMap';
 import debounce from 'lodash/debounce';
-import omit from 'lodash/omit';
+// import omit from 'lodash/omit';
 import { Parser } from 'acorn-jsx';
-import 'codemirror/lib/codemirror.css';
-import 'codemirror/theme/neo.css';
 import Resizable from 're-resizable';
 import Preview from './Preview/Preview';
 import styles from './Playroom.less';
@@ -15,13 +13,7 @@ import WindowPortal from './WindowPortal';
 import UndockSvg from '../assets/icons/NewWindowSvg';
 import { formatCode } from '../utils/formatting';
 
-import codeMirror from 'codemirror';
-import ReactCodeMirror from 'react-codemirror';
-import 'codemirror/mode/jsx/jsx';
-import 'codemirror/addon/edit/closetag';
-import 'codemirror/addon/edit/closebrackets';
-import 'codemirror/addon/hint/show-hint';
-import 'codemirror/addon/hint/xml-hint';
+import * as monaco from 'monaco-editor';
 
 const resizableConfig = {
   top: true,
@@ -34,44 +26,20 @@ const resizableConfig = {
   topLeft: false
 };
 
-const completeAfter = (cm, predicate) => {
-  const CodeMirror = cm.constructor;
-  if (!predicate || predicate()) {
-    setTimeout(() => {
-      if (!cm.state.completionActive) {
-        cm.showHint({ completeSingle: false });
-      }
-    }, 100);
-  }
-
-  return CodeMirror.Pass;
-};
-
-const completeIfAfterLt = cm => {
-  const CodeMirror = cm.constructor;
-
-  return completeAfter(cm, () => {
-    const cur = cm.getCursor();
-    // eslint-disable-next-line new-cap
-    return cm.getRange(CodeMirror.Pos(cur.line, cur.ch - 1), cur) === '<';
-  });
-};
-
-const completeIfInTag = cm => {
-  const CodeMirror = cm.constructor;
-
-  return completeAfter(cm, () => {
-    const tok = cm.getTokenAt(cm.getCursor());
-    if (
-      tok.type === 'string' &&
-      (!/['"]/.test(tok.string.charAt(tok.string.length - 1)) ||
-        tok.string.length === 1)
-    ) {
-      return false;
+const insertEditor = () => {
+  const editor = monaco.editor.create(
+    document.getElementById('monacoContainer'),
+    {
+      value: '',
+      language: 'javascript',
+      automaticLayout: true,
+      fontSize: 16,
+      autoIndent: true
     }
-    const inner = CodeMirror.innerMode(cm.getMode(), tok.state).state;
-    return inner.tagName;
-  });
+  );
+  editor.getModel().updateOptions({ tabSize: 2 });
+  monaco.editor.setTheme('vs-dark');
+  return editor;
 };
 
 export default class Playroom extends Component {
@@ -86,6 +54,8 @@ export default class Playroom extends Component {
       editorUndocked: false,
       key: 0
     };
+
+    this.resizable = React.createRef();
   }
 
   componentDidMount() {
@@ -95,21 +65,24 @@ export default class Playroom extends Component {
           this.setState({
             height
           });
+          this.resizable.current.updateSize({ height });
         }
         this.initialiseCode(code);
         this.validateCode(code);
       }
     );
+
+    this.editor = insertEditor();
+    // this.editor.onDidChangeModelContent(() => {
+    // this.updateCode(this.editor.getValue());
+    // });
+
     window.addEventListener('keydown', this.handleKeyPress);
   }
 
   componentWillUnmount() {
     window.removeEventListener('keydown', this.handleKeyPress);
   }
-
-  storeCodeMirrorRef = cmRef => {
-    this.cmRef = cmRef;
-  };
 
   setEditorUndocked = val => {
     this.setState({
@@ -118,6 +91,7 @@ export default class Playroom extends Component {
   };
 
   initialiseCode = code => {
+    console.log('code: ', code);
     this.setState({
       codeReady: true,
       code,
@@ -132,9 +106,6 @@ export default class Playroom extends Component {
   };
 
   validateCode = code => {
-    const cm = this.cmRef.codeMirror;
-    cm.clearGutter(styles.gutter);
-
     try {
       // validate code is parsable
       new Parser({ plugins: { jsx: true } }, `<div>${code}</div>`).parse();
@@ -158,44 +129,39 @@ export default class Playroom extends Component {
       const marker = document.createElement('div');
       marker.classList.add(styles.marker);
       marker.setAttribute('title', err.message);
-      cm.setGutterMarker(lineNumber - 1, styles.gutter, marker);
     }
   };
 
   handleKeyPress = e => {
     if (
-      e.keyCode === 83 &&
+      e.code === 'KeyS' &&
       (navigator.platform.match('Mac') ? e.metaKey : e.ctrlKey)
     ) {
       e.preventDefault();
 
-      const { code } = this.state;
+      const code = this.editor.getValue();
+      const cursor = this.editor.getPosition();
 
       const { formattedCode, line, ch } = formatCode({
         code,
-        cursor: this.cmRef.codeMirror.getCursor()
-      });
-
-      this.setState(
-        {
-          code: formattedCode,
-          key: Math.random()
-        },
-        () => {
-          this.cmRef.codeMirror.focus();
-          this.cmRef.codeMirror.setCursor({
-            line,
-            ch
-          });
+        cursor: {
+          line: cursor.lineNumber,
+          ch: cursor.column
         }
-      );
+      });
+      console.log('line, ch: ', line, ch);
+
+      this.editor.setValue(formattedCode);
+      this.editor.setPosition({ column: ch, lineNumber: line });
     }
   };
 
-  updateHeight = (event, direction, ref) => {
-    this.setState({
-      height: ref.offsetHeight
-    });
+  updateHeight = (event, direction, ref, delta) => {
+    console.log('delta: ', delta);
+    console.log('ref.offsetHeight: ', ref.offsetHeight);
+    this.setState(({ height: oldHeight }) => ({
+      height: oldHeight + delta.height
+    }));
     store.setItem('editorSize', ref.offsetHeight);
   };
 
@@ -214,18 +180,18 @@ export default class Playroom extends Component {
   render() {
     const {
       components,
-      staticTypes,
+      // staticTypes,
       themes,
       widths,
       frameComponent
     } = this.props;
     const {
       codeReady,
-      code,
+      // code,
       renderCode,
       height,
-      editorUndocked,
-      key
+      editorUndocked
+      // key
     } = this.state;
 
     const themeNames = Object.keys(themes);
@@ -235,82 +201,87 @@ export default class Playroom extends Component {
       })
     );
 
-    const componentNames = Object.keys(components).sort();
-    const tags = Object.assign(
-      {},
-      ...componentNames.map(componentName => {
-        const staticTypesForComponent = staticTypes[componentName];
-        if (
-          staticTypesForComponent &&
-          Object.keys(staticTypesForComponent).length > 0
-        ) {
-          return {
-            [componentName]: {
-              attrs: staticTypesForComponent
-            }
-          };
-        }
+    if (this.editor && this.editor.setValue && renderCode) {
+      this.editor.setValue(renderCode);
+    }
+    // console.log('editor.setValue: ', editor.setValue);
 
-        const parsedPropTypes = parsePropTypes(components[componentName]);
-        const filteredPropTypes = omit(
-          parsedPropTypes,
-          'children',
-          'className'
-        );
-        const propNames = Object.keys(filteredPropTypes);
+    // const componentNames = Object.keys(components).sort();
+    // const tags = Object.assign(
+    //   {},
+    //   ...componentNames.map(componentName => {
+    //     const staticTypesForComponent = staticTypes[componentName];
+    //     if (
+    //       staticTypesForComponent &&
+    //       Object.keys(staticTypesForComponent).length > 0
+    //     ) {
+    //       return {
+    //         [componentName]: {
+    //           attrs: staticTypesForComponent
+    //         }
+    //       };
+    //     }
 
-        return {
-          [componentName]: {
-            attrs: Object.assign(
-              {},
-              ...propNames.map(propName => {
-                const propType = filteredPropTypes[propName].type;
+    //     const parsedPropTypes = parsePropTypes(components[componentName]);
+    //     const filteredPropTypes = omit(
+    //       parsedPropTypes,
+    //       'children',
+    //       'className'
+    //     );
+    //     const propNames = Object.keys(filteredPropTypes);
 
-                return {
-                  [propName]:
-                    propType.name === 'oneOf'
-                      ? propType.value.filter(x => typeof x === 'string')
-                      : null
-                };
-              })
-            )
-          }
-        };
-      })
-    );
+    //     return {
+    //       [componentName]: {
+    //         attrs: Object.assign(
+    //           {},
+    //           ...propNames.map(propName => {
+    //             const propType = filteredPropTypes[propName].type;
 
-    const codeMirrorEl = (
-      <ReactCodeMirror
-        key={key}
-        codeMirrorInstance={codeMirror}
-        ref={this.storeCodeMirrorRef}
-        value={code}
-        onChange={this.handleChange}
-        options={{
-          mode: 'jsx',
-          autoCloseTags: true,
-          autoCloseBrackets: true,
-          theme: 'neo',
-          gutters: [styles.gutter],
-          hintOptions: { schemaInfo: tags },
-          extraKeys: {
-            Tab: cm => {
-              if (cm.somethingSelected()) {
-                cm.indentSelection('add');
-              } else {
-                const indent = cm.getOption('indentUnit');
-                const spaces = Array(indent + 1).join(' ');
-                cm.replaceSelection(spaces);
-              }
-            },
-            "'<'": completeAfter,
-            "'/'": completeIfAfterLt,
-            "' '": completeIfInTag,
-            "'='": completeIfInTag
-          }
-        }}
-      />
-    );
+    //             return {
+    //               [propName]:
+    //                 propType.name === 'oneOf'
+    //                   ? propType.value.filter(x => typeof x === 'string')
+    //                   : null
+    //             };
+    //           })
+    //         )
+    //       }
+    //     };
+    //   })
+    // );
+
+    // const codeMirrorEl = (
+    //   <ReactCodeMirror
+    //     key={key}
+    //     codeMirrorInstance={codeMirror}
+    //     ref={this.storeCodeMirrorRef}
+    //     value={code}
+    //     onChange={this.handleChange}
+    //     options={{
+    //       mode: 'jsx',
+    //       autoCloseTags: true,
+    //       autoCloseBrackets: true,
+    //       theme: 'neo',
+    //       gutters: [styles.gutter],
+    //       hintOptions: { schemaInfo: tags },
+    //       extraKeys: {
+    //         Tab: cm => {
+    //           if (cm.somethingSelected()) {
+    //             cm.indentSelection('add');
+    //           } else {
+    //             const indent = cm.getOption('indentUnit');
+    //             const spaces = Array(indent + 1).join(' ');
+    //             cm.replaceSelection(spaces);
+    //           }
+    //         },
+    //         "'<'": completeAfter,
+    //         "'/'": completeIfAfterLt,
+    //         "' '": completeIfInTag,
+    //         "'='": completeIfInTag
+    //       }
+    //     }}
+    //   />
+    // );
 
     if (editorUndocked && codeReady) {
       return (
@@ -328,19 +299,23 @@ export default class Playroom extends Component {
             height={window.outerHeight}
             width={window.outerWidth}
             onClose={this.handleRedockEditor}
+            monacoModel={this.editor.getModel()}
           >
-            <div className={styles.undockedEditorContainer}>{codeMirrorEl}</div>
+            <div
+              className={styles.undockedEditorContainer}
+              id="poppedMonacoContainer"
+            />
           </WindowPortal>
         </div>
       );
     }
 
-    return !codeReady ? null : (
+    // if (!codeReady) {
+    //   return null;
+    // }
+    return (
       <div className={styles.root}>
-        <div
-          className={styles.previewContainer}
-          style={{ bottom: this.state.height }}
-        >
+        <div className={styles.previewContainer} style={{ bottom: height }}>
           <Preview
             code={renderCode}
             components={components}
@@ -350,6 +325,7 @@ export default class Playroom extends Component {
           />
         </div>
         <Resizable
+          ref={this.resizable}
           className={styles.editorContainer}
           defaultSize={{
             height: `${height}`, // issue in ff & safari when not a string
@@ -368,7 +344,11 @@ export default class Playroom extends Component {
               onClick={this.handleUndockEditor}
             />
           </div>
-          {codeMirrorEl}
+          <div
+            id="monacoContainer"
+            className={styles.monacoEditor}
+            style={{ height }}
+          />
         </Resizable>
       </div>
     );

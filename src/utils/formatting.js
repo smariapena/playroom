@@ -16,9 +16,9 @@ export const runPrettier = ({ code, cursorOffset }) => {
 
 export const positionToCursorOffset = (code, { line, ch }) => {
   return code.split('\n').reduce((pos, currLine, index) => {
-    if (index < line) {
+    if (index < line - 1) {
       return pos + currLine.length + 1;
-    } else if (index === line) {
+    } else if (index === line - 1) {
       return pos + ch;
     }
     return pos;
@@ -26,8 +26,8 @@ export const positionToCursorOffset = (code, { line, ch }) => {
 };
 
 export const cursorOffsetToPosition = (code, cursorOffset) => {
-  const substring = code.slice(0, cursorOffset);
-  const line = substring.split('\n').length - 1;
+  const substring = code.slice(0, cursorOffset - 1);
+  const line = substring.split('\n').length;
   const indexOfLastLine = substring.lastIndexOf('\n');
 
   return {
